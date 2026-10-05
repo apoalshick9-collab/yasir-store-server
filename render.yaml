@@ -1,0 +1,17 @@
+# نشر متجر ياسر أبو الشيخ على Render (خطة مجانية)
+services:
+  - type: web
+    name: yasir-store
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn server:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: ADMIN_USER
+        value: "admin"
+      - key: ADMIN_PASS
+        value: "yasir123"
+      - key: MAX_UPLOAD_MB
+        value: "10"
+      # ملاحظة: قاعدة البيانات SQLite تُحفظ في ./data — على الخطة المجانية قد تُمسح عند إعادة النشر.
+      # للإنتاج الحقيقي استخدم قرصاً دائماً (Disk) أو قاعدة بيانات خارجية.
