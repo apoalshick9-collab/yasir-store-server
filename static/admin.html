@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة التحكم | ياسر أبو الشيخ</title>
+<link rel="stylesheet" href="/css/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; place-items: center; z-index: 100; padding: 18px; }
+  .modal.open { display: grid; }
+  .modal .form-card { margin: 0; width: 100%; max-width: 620px; max-height: 92vh; overflow: auto; }
+  .thumb-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .thumb-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+  .thumb-row img.sel { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="container nav">
+    <a class="brand" href="/"><span class="logo">⚡</span><span>ياسر أبو الشيخ<small>لوحة التحكم</small></span></a>
+    <div style="margin-inline-start:auto;display:flex;gap:10px;align-items:center">
+      <span id="adminName" style="color:var(--muted);font-size:.9rem"></span>
+      <button class="btn ghost small" id="logoutBtn" style="display:none" onclick="logout()">تسجيل الخروج</button>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+  <!-- login -->
+  <div class="form-card" id="loginBox">
+    <h2>🔐 دخول الإدارة</h2>
+    <label class="lbl">اسم المستخدم</label><input class="in" id="u" placeholder="admin" autocomplete="username">
+    <label class="lbl">كلمة المرور</label><input class="in" id="p" type="password" placeholder="••••••" autocomplete="current-password">
+    <button class="btn" style="width:100%;margin-top:18px" onclick="login()">دخول</button>
+    <p style="color:var(--muted);font-size:.82rem;margin-top:12px">بيانات الدخول الافتراضية: <b dir="ltr">admin / yasir123</b> — غيّرها من متغيرات البيئة في الإنتاج.</p>
+  </div>
+
+  <!-- dashboard -->
+  <div id="dash" style="display:none">
+    <div class="admin-layout">
+      <div class="side">
+        <button class="active" data-t="stats" onclick="tab('stats')">📊 الإحصائيات</button>
+        <button data-t="products" onclick="tab('products')">📦 المنتجات</button>
+        <button data-t="orders" onclick="tab('orders')">🧾 الطلبات <span id="ordBadge"></span></button>
+      </div>
+      <div>
+        <div id="t-stats"></div>
+        <div id="t-products" style="display:none"></div>
+        <div id="t-orders" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- product modal -->
+<div class="modal" id="pModal">
+  <div class="form-card">
+    <h2 id="pmTitle">➕ منتج جديد</h2>
+    <input type="hidden" id="pId">
+    <label class="lbl">اسم المنتج *</label><input class="in" id="pName">
+    <div class="row2">
+      <div><label class="lbl">القسم</label><select class="in" id="pCat"></select></div>
+      <div><label class="lbl">المخزون</label><input class="in" id="pStock" type="number" min="0" value="10"></div>
+    </div>
+    <div class="row2">
+      <div><label class="lbl">السعر (ل.س) *</label><input class="in" id="pPrice" type="number" min="0"></div>
+      <div><label class="lbl">السعر قبل الخصم (اختياري)</label><input class="in" id="pOld" type="number" min="0"></div>
+    </div>
+    <label class="lbl">الوصف</label><textarea class="in" id="pDesc"></textarea>
+    <label class="lbl">المواصفات (سطر لكل مواصفة: الاسم: القيمة)</label>
+    <textarea class="in" id="pSpecs" placeholder="الشاشة: 6.8 بوصة&#10;البطارية: 5000mAh"></textarea>
+    <label class="lbl">صور المنتج</label>
+    <input class="in" type="file" id="pFile" accept="image/*">
+    <div class="thumb-row" id="pThumbs"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input type="checkbox" id="pFeat"> منتج مميز (يظهر في العروض)</label>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn" onclick="saveProduct()">💾 حفظ</button>
+      <button class="btn ghost" onclick="closeModal()">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- order modal -->
+<div class="modal" id="oModal"><div class="form-card"><div id="oBody"></div>
+  <button class="btn ghost" style="margin-top:14px" onclick="document.getElementById('oModal').classList.remove('open')">إغلاق</button>
+</div></div>
+
+<script src="/js/app.js"></script>
+<script>
+let token = localStorage.getItem("ys_admin_token") || "";
+let CATS = [];
+const STATUS = { new: "🆕 جديد", processing: "📦 قيد التجهيز", shipped: "🚚 تم الشحن", delivered: "✅ تم التوصيل", cancelled: "❌ ملغي" };
+
+function ah() { return { "Authorization": "Bearer " + token }; }
+async function aapi(path, opts = {}) {
+  try { return await api(path, { ...opts, headers: { ...(opts.headers || {}), ...ah() } }); }
+  catch (e) {
+    if (e.message.includes("401") || e.message.includes("الجلسة") || e.message.includes("تسجيل الدخول")) { logout(); throw new Error("انتهت الجلسة"); }
+    throw e;
+  }
+}
+
+async function login() {
+  const username = document.getElementById("u").value.trim();
+  const password = document.getElementById("p").value;
+  if (!username || !password) return toast("⚠️ أدخل البيانات");
+  try {
+    const r = await api("/api/admin/login", { method: "POST", body: JSON.stringify({ username, password }) });
+    token = r.token; localStorage.setItem("ys_admin_token", token);
+    boot();
+  } catch (e) { toast("⚠️ " + e.message); }
+}
+function logout() {
+  if (token) fetch("/api/admin/logout", { method: "POST", headers: ah() }).catch(() => {});
+  token = ""; localStorage.removeItem("ys_admin_token");
+  document.getElementById("dash").style.display = "none";
+  document.getElementById("loginBox").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "none";
+}
+document.getElementById("p").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+
+async function boot() {
+  try { const me = await aapi("/api/admin/me"); }
+  catch { return; }
+  document.getElementById("loginBox").style.display = "none";
+  document.getElementById("dash").style.display = "block";
+  document.getElementById("logoutBtn").style.display = "inline-block";
+  CATS = await loadCats();
+  document.getElementById("pCat").innerHTML = CATS.map(c => `<option value="${c.slug}">${c.icon} ${c.name}</option>`).join("");
+  tab("stats");
+}
+
+function tab(t) {
+  document.querySelectorAll(".side button").forEach(b => b.classList.toggle("active", b.dataset.t === t));
+  ["stats", "products", "orders"].forEach(x => document.getElementById("t-" + x).style.display = x === t ? "block" : "none");
+  if (t === "stats") loadStats();
+  if (t === "products") loadProducts();
+  if (t === "orders") loadOrders();
+}
+
+async function loadStats() {
+  const s = await aapi("/api/admin/stats");
+  document.getElementById("ordBadge").textContent = s.pending ? `(${s.pending} جديد)` : "";
+  document.getElementById("t-stats").innerHTML = `
+    <div class="stat-cards">
+      <div class="stat"><div class="v">${s.products}</div><div class="k">📦 منتج نشط</div></div>
+      <div class="stat"><div class="v">${s.orders}</div><div class="k">🧾 إجمالي الطلبات</div></div>
+      <div class="stat"><div class="v" style="font-size:1.2rem">${fmt(s.revenue)}</div><div class="k">💰 إجمالي الإيرادات</div></div>
+      <div class="stat"><div class="v">${s.pending}</div><div class="k">🆕 طلبات جديدة</div></div>
+    </div>
+    <div class="section-head"><h2>⚠️ مخزون منخفض</h2></div>
+    ${s.low_stock.length ? `<table class="tbl"><tr><th>المنتج</th><th>المخزون</th></tr>` +
+      s.low_stock.map(p => `<tr><td>${p.name}</td><td style="color:#f5a524;font-weight:800">${p.stock}</td></tr>`).join("") + `</table>`
+      : `<div class="empty">المخزون بحالة جيدة ✅</div>`}
+    <div class="section-head" style="margin-top:22px"><h2>🕒 أحدث الطلبات</h2></div>
+    <table class="tbl"><tr><th>الرقم</th><th>العميل</th><th>الإجمالي</th><th>الحالة</th></tr>
+    ${s.recent_orders.map(o => `<tr><td dir="ltr"><b>${o.code}</b></td><td>${o.customer_name}</td><td>${fmt(o.total)}</td>
+      <td><span class="pill ${o.status}">${STATUS[o.status]}</span></td></tr>`).join("")}</table>`;
+}
+
+/* ---------- products ---------- */
+let PIMG = [];
+async function loadProducts() {
+  const list = await aapi("/api/admin/products");
+  document.getElementById("t-products").innerHTML = `
+    <div class="section-head"><h2>📦 المنتجات (${list.length})</h2>
+      <button class="btn" onclick="openProduct()">➕ إضافة منتج</button></div>
+    <table class="tbl"><tr><th></th><th>المنتج</th><th>القسم</th><th>السعر</th><th>المخزون</th><th>مميز</th><th></th></tr>
+    ${list.map(p => `<tr>
+      <td><img src="${(p.images[0] || "/img/placeholder.webp")}" style="width:44px;height:44px;object-fit:cover;border-radius:8px"></td>
+      <td><b>${p.name}</b>${p.active ? "" : ' <span class="pill cancelled">مخفي</span>'}</td>
+      <td>${catName(p.category)}</td><td>${fmt(p.price)}</td>
+      <td style="font-weight:800;color:${p.stock < 8 ? "#f5a524" : "var(--green)"}">${p.stock}</td>
+      <td>${p.featured ? "⭐" : "—"}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost small" onclick='openProduct(${JSON.stringify(p).replace(/'/g, "&#39;")})'>✏️</button>
+        <button class="btn danger small" onclick="delProduct(${p.id})">🗑</button>
+      </td></tr>`).join("")}</table>`;
+}
+function openProduct(p) {
+  document.getElementById("pmTitle").textContent = p ? "✏️ تعديل منتج" : "➕ منتج جديد";
+  document.getElementById("pId").value = p ? p.id : "";
+  document.getElementById("pName").value = p ? p.name : "";
+  document.getElementById("pCat").value = p ? p.category : (CATS[0] ? CATS[0].slug : "");
+  document.getElementById("pPrice").value = p ? p.price : "";
+  document.getElementById("pOld").value = p && p.old_price ? p.old_price : "";
+  document.getElementById("pStock").value = p ? p.stock : 10;
+  document.getElementById("pDesc").value = p ? p.description : "";
+  document.getElementById("pSpecs").value = p ? Object.entries(p.specs || {}).map(([k, v]) => k + ": " + v).join("\n") : "";
+  document.getElementById("pFeat").checked = p ? !!p.featured : false;
+  PIMG = p ? [...(p.images || [])] : [];
+  renderThumbs();
+  document.getElementById("pModal").classList.add("open");
+}
+function closeModal() { document.getElementById("pModal").classList.remove("open"); }
+function renderThumbs() {
+  document.getElementById("pThumbs").innerHTML = PIMG.map((u, i) =>
+    `<img src="${u}" class="${i === 0 ? "sel" : ""}" title="اضغط للحذف" onclick="PIMG.splice(${i},1);renderThumbs()">`).join("");
+}
+document.getElementById("pFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append("file", f);
+  toast("⏳ جاري رفع الصورة...");
+  try {
+    const r = await fetch("/api/admin/upload", { method: "POST", headers: ah(), body: fd }).then(r => r.json());
+    if (!r.ok) throw new Error(r.detail || "فشل الرفع");
+    PIMG.push(r.url); renderThumbs(); toast("✅ تم رفع الصورة");
+  } catch (err) { toast("⚠️ " + err.message); }
+  e.target.value = "";
+});
+function parseSpecs(t) {
+  const o = {};
+  t.split("\n").forEach(l => { const i = l.indexOf(":"); if (i > 0) o[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
+  return o;
+}
+async function saveProduct() {
+  const id = document.getElementById("pId").value;
+  const body = {
+    name: document.getElementById("pName").value.trim(),
+    category: document.getElementById("pCat").value,
+    price: +document.getElementById("pPrice").value || 0,
+    old_price: +document.getElementById("pOld").value || null,
+    stock: +document.getElementById("pStock").value || 0,
+    description: document.getElementById("pDesc").value.trim(),
+    specs: parseSpecs(document.getElementById("pSpecs").value),
+    images: PIMG, featured: document.getElementById("pFeat").checked,
+  };
+  if (!body.name || !body.price) return toast("⚠️ الاسم والسعر مطلوبان");
+  try {
+    if (id) await aapi("/api/admin/products/" + id, { method: "PUT", body: JSON.stringify(body) });
+    else await aapi("/api/admin/products", { method: "POST", body: JSON.stringify(body) });
+    toast("✅ تم الحفظ"); closeModal(); loadProducts();
+  } catch (e) { toast("⚠️ " + e.message); }
+}
+async function delProduct(id) {
+  if (!confirm("حذف هذا المنتج؟ (سيُخفى من المتجر)")) return;
+  await aapi("/api/admin/products/" + id, { method: "DELETE" });
+  toast("🗑 تم حذف المنتج"); loadProducts();
+}
+
+/* ---------- orders ---------- */
+let OF = "";
+async function loadOrders() {
+  const list = await aapi("/api/admin/orders" + (OF ? "?status=" + OF : ""));
+  const opts = Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${OF === k ? "selected" : ""}>${v}</option>`).join("");
+  document.getElementById("t-orders").innerHTML = `
+    <div class="section-head"><h2>🧾 الطلبات (${list.length})</h2>
+      <select class="in" style="width:auto" onchange="OF=this.value;loadOrders()"><option value="">كل الحالات</option>${opts}</select></div>
+    <table class="tbl"><tr><th>الرقم</th><th>العميل</th><th>الهاتف</th><th>الإجمالي</th><th>الحالة</th><th>التاريخ</th><th></th></tr>
+    ${list.map(o => `<tr>
+      <td dir="ltr"><b>${o.code}</b></td><td>${o.customer_name}</td><td dir="ltr">${o.phone}</td>
+      <td>${fmt(o.total)}</td>
+      <td><select class="in" style="width:auto;padding:6px" onchange="setStatus(${o.id},this.value)">
+        ${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+      <td style="font-size:.8rem;color:var(--muted)">${new Date(o.created_at * 1000).toLocaleDateString("ar")}</td>
+      <td><button class="btn ghost small" onclick="viewOrder(${o.id})">👁</button></td></tr>`).join("")
+      || `<tr><td colspan="7" style="text-align:center;color:var(--muted)">لا توجد طلبات</td></tr>`}</table>`;
+}
+async function setStatus(id, st) {
+  try { await aapi("/api/admin/orders/" + id, { method: "PATCH", body: JSON.stringify({ status: st }) }); toast("✅ تم تحديث الحالة"); }
+  catch (e) { toast("⚠️ " + e.message); loadOrders(); }
+}
+async function viewOrder(id) {
+  const o = await aapi("/api/admin/orders/" + id);
+  document.getElementById("oBody").innerHTML = `
+    <h2>طلب <span dir="ltr" style="color:var(--gold2)">${o.code}</span></h2>
+    <div class="line" style="display:flex;justify-content:space-between;margin:6px 0"><span style="color:var(--muted)">العميل</span><b>${o.customer_name}</b></div>
+    <div class="line" style="display:flex;justify-content:space-between;margin:6px 0"><span style="color:var(--muted)">الهاتف</span><b dir="ltr">${o.phone}</b></div>
+    <div class="line" style="display:flex;justify-content:space-between;margin:6px 0"><span style="color:var(--muted)">العنوان</span><b>${o.city} — ${o.address}</b></div>
+    ${o.notes ? `<div style="color:var(--muted);font-size:.9rem">📝 ${o.notes}</div>` : ""}
+    <h3 style="margin:12px 0 6px">المنتجات</h3>
+    ${o.items.map(i => `<div style="display:flex;justify-content:space-between;margin:6px 0"><span>${i.product_name} × ${i.quantity}</span><b>${fmt(i.unit_price * i.quantity)}</b></div>`).join("")}
+    <div style="display:flex;justify-content:space-between;border-top:1px dashed var(--border);padding-top:10px;margin-top:10px">
+      <b>الإجمالي</b><b style="color:var(--gold2)">${fmt(o.total)}</b></div>
+    <label class="lbl">تغيير الحالة</label>
+    <select class="in" onchange="setStatus(${o.id},this.value);document.getElementById('oModal').classList.remove('open');loadOrders()">
+      ${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${o.status === k ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+  document.getElementById("oModal").classList.add("open");
+}
+
+if (token) boot();
+</script>
+</body>
+</html>

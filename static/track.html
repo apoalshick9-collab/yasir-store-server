@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تتبع الطلب | ياسر أبو الشيخ</title>
+<link rel="stylesheet" href="/css/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="top">
+  <div class="container nav">
+    <a class="brand" href="/"><span class="logo">⚡</span><span>ياسر أبو الشيخ<small>للإلكترونيات</small></span></a>
+    <nav class="nav-links">
+      <a href="/">الرئيسية</a>
+      <a href="/shop.html">المتجر</a>
+      <a href="/track.html" class="active">تتبع الطلب</a>
+    </nav>
+    <a class="cart-btn" href="/cart.html">🛒 السلة <span class="count" style="display:none">0</span></a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="form-card">
+    <h2>🔍 تتبع طلبك</h2>
+    <p style="color:var(--muted);margin-bottom:14px">أدخل رقم الطلب الذي حصلت عليه عند إتمام الشراء (مثال: YS-AB12CD)</p>
+    <div style="display:flex;gap:10px">
+      <input class="in" id="code" placeholder="YS-XXXXXX" dir="ltr" style="text-align:center;font-weight:800;letter-spacing:2px">
+      <button class="btn" onclick="track()">بحث</button>
+    </div>
+  </div>
+  <div id="result"></div>
+</div>
+
+<footer>
+  <div class="container">
+    <div>© 2026 متجر <b style="color:var(--gold2)">ياسر أبو الشيخ</b> للإلكترونيات</div>
+  </div>
+</footer>
+
+<script src="/js/app.js"></script>
+<script>
+const STEPS = [
+  ["new", "🆕", "تم استلام الطلب"],
+  ["processing", "📦", "قيد التجهيز"],
+  ["shipped", "🚚", "تم الشحن"],
+  ["delivered", "✅", "تم التوصيل"],
+];
+const ORDER = ["new", "processing", "shipped", "delivered"];
+
+async function track() {
+  const code = document.getElementById("code").value.trim().toUpperCase();
+  if (!code) return toast("⚠️ أدخل رقم الطلب");
+  const box = document.getElementById("result");
+  box.innerHTML = `<div class="empty">جاري البحث...</div>`;
+  try {
+    const o = await api("/api/orders/track/" + encodeURIComponent(code));
+    const idx = o.status === "cancelled" ? -1 : ORDER.indexOf(o.status);
+    box.innerHTML = `
+    <div class="form-card" style="max-width:100%">
+      <h2>طلب رقم <span dir="ltr" style="color:var(--gold2)">${o.code}</span></h2>
+      ${o.status === "cancelled"
+        ? `<div class="empty"><div class="big">❌</div>هذا الطلب ملغي. تواصل معنا للمزيد من التفاصيل.</div>`
+        : `<div class="track-steps">` + STEPS.map(([s, ic, lbl], i) =>
+            `<div class="tstep ${i <= idx ? "done" : ""}"><div class="dot">${ic}</div><small>${lbl}</small></div>`).join("") + `</div>`}
+      <div class="line" style="display:flex;justify-content:space-between;margin:8px 0"><span style="color:var(--muted)">الحالة الحالية</span><b>${o.status_ar}</b></div>
+      <div class="line" style="display:flex;justify-content:space-between;margin:8px 0"><span style="color:var(--muted)">الاسم</span><b>${o.customer_name}</b></div>
+      <div class="line" style="display:flex;justify-content:space-between;margin:8px 0"><span style="color:var(--muted)">المحافظة</span><b>${o.city}</b></div>
+      <h3 style="margin:16px 0 8px">🧾 المنتجات</h3>
+      ${o.items.map(i => `<div class="line" style="display:flex;justify-content:space-between;margin:8px 0">
+        <span>${i.product_name} × ${i.quantity}</span><b>${fmt(i.unit_price * i.quantity)}</b></div>`).join("")}
+      <div class="line grand" style="display:flex;justify-content:space-between;border-top:1px dashed var(--border);padding-top:12px;margin-top:12px">
+        <span>الإجمالي (عند الاستلام)</span><span style="color:var(--gold2);font-weight:800;font-size:1.2rem">${fmt(o.total)}</span></div>
+    </div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="empty"><div class="big">😕</div>${e.message}</div>`;
+  }
+}
+document.getElementById("code").addEventListener("keydown", e => { if (e.key === "Enter") track(); });
+const qc = new URLSearchParams(location.search).get("code");
+if (qc) { document.getElementById("code").value = qc; track(); }
+</script>
+</body>
+</html>

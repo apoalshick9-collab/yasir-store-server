@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>السلة وإتمام الطلب | ياسر أبو الشيخ</title>
+<link rel="stylesheet" href="/css/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="top">
+  <div class="container nav">
+    <a class="brand" href="/"><span class="logo">⚡</span><span>ياسر أبو الشيخ<small>للإلكترونيات</small></span></a>
+    <nav class="nav-links">
+      <a href="/">الرئيسية</a>
+      <a href="/shop.html">المتجر</a>
+      <a href="/track.html">تتبع الطلب</a>
+    </nav>
+    <a class="cart-btn" href="/cart.html">🛒 السلة <span class="count" style="display:none">0</span></a>
+  </div>
+</header>
+
+<div class="container">
+  <section class="section" id="cartSec">
+    <div class="section-head"><h2>🛒 سلة المشتريات</h2></div>
+    <div id="items"></div>
+    <div class="total-box" id="totalBox" style="display:none">
+      <div class="line"><span>المجموع الفرعي</span><b id="sub"></b></div>
+      <div class="line"><span>التوصيل</span><b style="color:var(--green)">يُحدد عند الاتصال بك</b></div>
+      <div class="line grand"><span>الإجمالي</span><span id="grand"></span></div>
+    </div>
+  </section>
+
+  <section class="section" id="coSec" style="display:none">
+    <div class="section-head"><h2>📝 إتمام الطلب — الدفع عند الاستلام</h2></div>
+    <div class="form-card" style="margin:0;max-width:100%">
+      <div class="row2">
+        <div><label class="lbl">الاسم الكامل *</label><input class="in" id="fName" placeholder="مثال: أحمد محمد"></div>
+        <div><label class="lbl">رقم الهاتف *</label><input class="in" id="fPhone" placeholder="09xxxxxxxx" dir="ltr" style="text-align:right"></div>
+      </div>
+      <div class="row2">
+        <div><label class="lbl">المحافظة *</label>
+          <select class="in" id="fCity">
+            <option value="">اختر المحافظة</option>
+            <option>دمشق</option><option>ريف دمشق</option><option>حلب</option><option>حمص</option>
+            <option>حماة</option><option>اللاذقية</option><option>طرطوس</option><option>درعا</option>
+            <option>السويداء</option><option>القنيطرة</option><option>إدلب</option><option>دير الزور</option>
+            <option>الرقة</option><option>الحسكة</option>
+          </select></div>
+        <div><label class="lbl">العنوان التفصيلي *</label><input class="in" id="fAddr" placeholder="الشارع / الحي / علامة مميزة"></div>
+      </div>
+      <label class="lbl">ملاحظات (اختياري)</label>
+      <textarea class="in" id="fNotes" placeholder="أي تفاصيل إضافية عن الطلب أو التوصيل..."></textarea>
+      <div style="background:var(--gold-dim);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:16px 0;font-size:.92rem">
+        💵 <b>الدفع عند الاستلام:</b> تدفع قيمة طلبك نقداً عند وصول المندوب إليك. سنتصل بك لتأكيد الطلب قبل الشحن.
+      </div>
+      <button class="btn" id="orderBtn" style="width:100%;font-size:1.1rem" onclick="submitOrder()">✅ تأكيد الطلب</button>
+    </div>
+  </section>
+
+  <section class="section" id="doneSec" style="display:none">
+    <div class="form-card" style="text-align:center">
+      <div style="font-size:3.5rem">🎉</div>
+      <h2>تم استلام طلبك بنجاح!</h2>
+      <p style="color:var(--muted)">احتفظ برقم الطلب لتتبع حالته في أي وقت:</p>
+      <div style="font-size:2rem;font-weight:900;color:var(--gold2);letter-spacing:2px;margin:14px 0" id="orderCode" dir="ltr"></div>
+      <p style="color:var(--muted)">سنتصل بك قريباً على رقم هاتفك لتأكيد الطلب.</p>
+      <a class="btn" id="trackLink" href="/track.html">🔍 تتبع طلبك الآن</a>
+      <a class="btn ghost" href="/shop.html" style="margin-inline-start:10px">مواصلة التسوق</a>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <div class="container">
+    <div>© 2026 متجر <b style="color:var(--gold2)">ياسر أبو الشيخ</b> للإلكترونيات</div>
+  </div>
+</footer>
+
+<script src="/js/app.js"></script>
+<script>
+let prods = {};
+async function render() {
+  const items = Cart.get();
+  const box = document.getElementById("items");
+  if (!items.length) {
+    box.innerHTML = `<div class="empty"><div class="big">🛒</div>سلتك فارغة<br><a class="btn" href="/shop.html" style="margin-top:14px">تسوّق الآن</a></div>`;
+    document.getElementById("totalBox").style.display = "none";
+    document.getElementById("coSec").style.display = "none";
+    return;
+  }
+  const ids = items.map(i => i.id);
+  const list = await api("/api/products?limit=200");
+  prods = Object.fromEntries(list.filter(p => ids.includes(p.id)).map(p => [p.id, p]));
+  let sub = 0, html = "";
+  for (const it of items) {
+    const p = prods[it.id];
+    if (!p) continue;
+    sub += p.price * it.qty;
+    const img = (p.images && p.images[0]) || "/img/placeholder.webp";
+    html += `<div class="cart-item">
+      <img src="${img}" alt="">
+      <div class="info"><h4>${p.name}</h4><div class="price">${fmt(p.price)}</div></div>
+      <div class="qty">
+        <button onclick="chQty(${p.id},-1)">−</button><b>${it.qty}</b><button onclick="chQty(${p.id},1)">+</button>
+      </div>
+      <button class="btn danger small" onclick="Cart.remove(${p.id});render()">🗑</button>
+    </div>`;
+  }
+  box.innerHTML = html;
+  document.getElementById("sub").textContent = fmt(sub);
+  document.getElementById("grand").textContent = fmt(sub);
+  document.getElementById("totalBox").style.display = "block";
+  document.getElementById("coSec").style.display = "block";
+}
+function chQty(id, d) {
+  const it = Cart.get().find(i => i.id === id);
+  if (it) { Cart.setQty(id, it.qty + d); render(); }
+}
+async function submitOrder() {
+  const name = document.getElementById("fName").value.trim();
+  const phone = document.getElementById("fPhone").value.trim();
+  const city = document.getElementById("fCity").value;
+  const address = document.getElementById("fAddr").value.trim();
+  const notes = document.getElementById("fNotes").value.trim();
+  if (!name || !phone || !city || !address) return toast("⚠️ املأ جميع الحقول المطلوبة (*)");
+  if (!/^[0-9+\s]{7,15}$/.test(phone)) return toast("⚠️ رقم الهاتف غير صالح");
+  const btn = document.getElementById("orderBtn");
+  btn.disabled = true; btn.textContent = "جاري إرسال الطلب...";
+  try {
+    const r = await api("/api/orders", { method: "POST", body: JSON.stringify({
+      customer_name: name, phone, city, address, notes,
+      items: Cart.get().map(i => ({ product_id: i.id, quantity: i.qty })),
+    })});
+    Cart.clear();
+    document.getElementById("cartSec").style.display = "none";
+    document.getElementById("coSec").style.display = "none";
+    document.getElementById("doneSec").style.display = "block";
+    document.getElementById("orderCode").textContent = r.code;
+    document.getElementById("trackLink").href = "/track.html?code=" + r.code;
+    window.scrollTo(0, 0);
+  } catch (e) {
+    toast("⚠️ " + e.message);
+    btn.disabled = false; btn.textContent = "✅ تأكيد الطلب";
+  }
+}
+render();
+</script>
+</body>
+</html>
