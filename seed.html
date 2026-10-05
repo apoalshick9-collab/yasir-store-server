@@ -20,9 +20,14 @@ function fv(v){
 }
 const F = o => ({fields: Object.fromEntries(Object.entries(o).map(([k,v])=>[k,fv(v)]))});
 async function req(url, method, body, headers){
-  const r = await fetch(url, {method, headers:{'Content-Type':'application/json',...(headers||{})}, body: body?JSON.stringify(body):undefined});
-  const j = await r.json().catch(()=>({}));
-  return [r.status, j];
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), 90000);
+  try{
+    const r = await fetch(url, {method, headers:{'Content-Type':'application/json',...(headers||{})}, body: body?JSON.stringify(body):undefined, signal: ctl.signal});
+    const j = await r.json().catch(()=>({}));
+    return [r.status, j];
+  }catch(e){ return [0, {fetch_error: String(e).slice(0,120)}]; }
+  finally{ clearTimeout(t); }
 }
 function loadImg(b64){
   return new Promise((res, rej)=>{
@@ -55,7 +60,8 @@ function loadImg(b64){
       const dataUrl = await loadImg(IMGS[p.img]);
       const body=F({name:p.name,description:p.description,category:p.category,price:p.price,old_price:p.old_price,stock:p.stock,images:[dataUrl],specs:p.specs,rating:5.0,reviews_count:0,featured:!!p.featured,active:true,created_at:now});
       [st,d]=await req(`${BASE}/products?key=${API_KEY}`,"POST",body,AH);
-      if(st!==200) throw "product failed "+st+" "+JSON.stringify(d).slice(0,200);
+      log("  -> POST status "+st);
+      if(st!==200) throw "product failed "+st+" "+JSON.stringify(d).slice(0,300);
       pids.push(d.name.split("/").pop());
     }
     log("products done: "+pids.length);
